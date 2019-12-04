@@ -1,3 +1,8 @@
+#GEOG 418 Final Project: Jessica MacLean
+
+#################################
+######## LOAD LIBRARIES #########
+#################################
 
 install.packages("sf")
 install.packages("plyr")
@@ -36,8 +41,10 @@ setwd(dir)
 
 #Reading in particulate matter dataset
 pm25 <- read.csv("PM25.csv") #Read in PM2.5 data
+
 #Select only columns 1 and 2
 pm25 <- pm25[,1:2]
+
 #Change the column names 
 colnames(pm25) <- c("POSTALCODE", "PM25")
 pm25 <- na.omit(pm25)
@@ -58,7 +65,7 @@ summary(census.tracts)
 ### Let's take a closer look at difficult to see areas of GVRD ############
 
 plot(income.tracts)
-locator()
+#locator()
 
 west_region <- st_bbox(c(xmin = -123.2569, xmax = -122.7775,
                        ymin = 49.09066, ymax = 49.36257), crs = st_crs(income.tracts)) %>%
@@ -111,14 +118,12 @@ set.seed(220)
 sampleSize=220
 spSample <- pm25.points.aggregate[sample(1:length(pm25.points.aggregate),sampleSize),]
 
-sampleSize=200
-spSample2 <- pm25.points.aggregate[sample(1:length(pm25.points.aggregate),sampleSize),]
-View(spSample2@data)
-
 plot(income.tracts)
 plot(spSample, type = "p", col = "blue", add = TRUE) #change colour of spSample points 
 
-######## Study Area Map ###################
+##################################################
+############### STUDY AREA MAP ###################
+##################################################
 
 install.packages("bcmaps")
 install.packages('bcmapsdata', repos='https://bcgov.github.io/drat/')
@@ -248,9 +253,11 @@ dev.off()
 
 ########################
 
+################################################
+################ Interpolation #################
+################################################
 
-####################### Interpolation #############################################
-# Every polygon should have a income and PM2.5
+# Every polygon should have an income and PM2.5
 
 #Create a grid called grd to use in your interpolation
 # Create an empty grid where n is the total number of cells
@@ -262,7 +269,7 @@ fullgrid(grd)    <- TRUE  # Create SpatialGrid object
 proj4string(grd) <- proj4string(spSample)
 
 #################################################
-##Polynomial Trend Analysis
+###########Polynomial Trend Analysis#############
 
 # Define the 2nd order polynomial equation
 f.2 <- as.formula(PM25AGG ~ X + Y + I(X*X)+I(Y*Y) + I(X*Y))
@@ -276,7 +283,7 @@ dat.2nd <- SpatialGridDataFrame(grd, data.frame(var1.pred = predict(lm.2, newdat
 r.second   <- raster(dat.2nd)
 r.m <- mask(r.second, census.tracts)
 
-# Plot the map
+# Plot the map and compare sampled PM2.5 data point values to the modelled trend
 secondorder <- tm_shape(r.m) + 
   tm_raster(n=10, palette="Reds", 
             title=" \n Predicted PM2.5 (ug/m3)") +
@@ -290,13 +297,13 @@ png("SecondOrderTrend.png")
 secondorder
 dev.off()
 
-#################################################
-##Spatial Interpolation with Universal Kriging (separate analysis in which you are accounting for any trends in your data.)
+################################################################
+##########Spatial Interpolation with Universal Kriging########## 
 
 spSample$X <- coordinates(spSample)[,1]
 spSample$Y <- coordinates(spSample)[,2]
 
-#THIS LOOKS THE BEST
+#Create Semivariogram
 f.2 <- as.formula(PM25AGG ~ X + Y + I(X*X)+I(Y*Y) + I(X*Y))
 var.smpl <- variogram(f.2, spSample, cloud = FALSE) #, cutoff=1000000, width=89900)
 dat.fit  <- fit.variogram(var.smpl, fit.ranges = FALSE, fit.sills = FALSE,
@@ -308,8 +315,7 @@ plot(var.smpl, dat.fit,
      col="black", main = "Universal Kriging Semivariogram", lw = 2)
 dev.off()
 
-# Define the trend model
-#f.1 <- as.formula(PM25AGG ~ X + Y) 
+# Define the second order polynomial trend model
 f.2 <- as.formula(PM25AGG ~ X + Y + I(X*X)+I(Y*Y) + I(X*Y))
 
 # Perform the krige interpolation (note the use of the variogram model
@@ -321,7 +327,7 @@ dat.krg <- krige( f.2, spSample, grd, dat.fit)
 r <- raster(dat.krg)
 r.m <- mask(r, census.tracts)
 
-# Plot the map
+# Plot the final UK map
 UK <- tm_shape(r.m) + 
   tm_raster(n=10, palette="Reds",  
             title="Predicted PM2.5 \n(ug/m3)") +
@@ -331,22 +337,6 @@ UK <- tm_shape(r.m) +
   tm_legend(legend.outside=TRUE)+
   tm_layout(main.title = "Interpolated PM 2.5 using Universal Kriging, Vancouver BC", main.title.size = 1)
 UK
-
-UK <- tm_shape(r.m) + 
-  tm_raster(n=10, palette="Reds",  
-            title="Predicted PM2.5 \n(ug/m3)") +
-  tm_shape(spSample2) +
-  tm_dots(col="PM25", palette = "Reds", n = 6, 
-          title="Sampled PM2.5 \n(ug/m3)", size=0.09) +
-  tm_compass(north = 0, position = c("right", "top"))+
-  tm_scale_bar(text.size = 0.5) +
-  tm_legend(legend.outside=TRUE)+
-  tm_layout(main.title = "Interpolated PM 2.5 using Universal Kriging, Vancouver BC", main.title.size = 1)
-UK
-
-png("Krigingwithsample.png")
-UK
-dev.off()
 
 
 r.var   <- raster(dat.krg, layer="var1.var")
@@ -402,13 +392,11 @@ pm.income.poly <- pm.income.poly[!is.na(pm.income.poly$PM25),]
 
 pm.income.poly <- pm.income.poly[which(pm.income.poly$PM25 >= 0),]
 pm.income.poly <- pm.income.poly[which(pm.income.poly$PM25 <= 5.7),]
-View(pm.income.poly@data)
-#Plot income and PM2.5 from the pm.income.poly dataset you created
-png("scatterplotIncome_PM25.png")
-plot(pm.income.poly$Income, pm.income.poly$PM25, xlab = "Income", ylab = "PM2.5")
-dev.off()
-#descriptive stats for the PM25 and Income per polygon data 
 
+#Plot income and PM2.5 from the pm.income.poly dataset you created
+plot(pm.income.poly$Income, pm.income.poly$PM25, xlab = "Income", ylab = "PM2.5")
+
+#descriptive stats for the PM25 and Income per polygon data 
 hist(pm.income.poly$PM25)
 hist(pm.income.poly$Income)
 
@@ -419,24 +407,23 @@ normality.income <- shapiro.test(pm.income.poly$Income)
 normality.income
 
 cor(pm.income.poly$PM25, pm.income.poly$Income, method = c("spearman"))
-#cor(pm.income.poly$PM25, pm.income.poly$Income, method = c("pearson"))
 
 #Perform a linear regression on the two variables. You should decide which one is dependent.
 lm.model <- lm(pm.income.poly$PM25~pm.income.poly$Income)
+
 #Add the regression model to the plot you created
 plot(pm.income.poly$Income, pm.income.poly$PM25, xlab = "Income", ylab = "PM2.5")
 abline(lm.model, col = "red", lw = 2)
+
 #Get the summary of the results
 summary(lm.model)
-
-#R-squared value is SO LOW 
 
 #You want to determine if the model residuals are spatially clustered. 
 #First obtain the residuals from the model
 model.resids <- as.data.frame(residuals.lm(lm.model))
+
 #Then add the residuals to your spatialpolygon dataframe
 pm.income.poly$residuals <- residuals.lm(lm.model)
-View(pm.income.poly@data)
 
 pmincome <- as.data.frame(pm.income.poly)
 normalityRes <- shapiro.test(pmincome$residuals)
@@ -445,7 +432,6 @@ hist(pmincome$residuals)
 
 #Observe the result to make sure it looks correct
 head(pm.income.poly)
-
 
 
 #Now, create choropleth map of residuals - If Income is the dependent variable than the residuals
@@ -459,10 +445,7 @@ map_residuals <- tm_shape(pm.income.poly)+
   tm_scale_bar(text.size = 0.5, position = c("RIGHT","BOTTOM"))+
   tm_legend(legend.outside=TRUE)
 
-png("linearresiduals.png")  
 map_residuals
-dev.off()
-
 
 ###################### Global and Local Moran's I for Regression residuals #############################
 
@@ -525,23 +508,17 @@ map_LISA2 <- tm_shape(pm.income.poly) +
 
 map_LISA2
 
-png("TmMap_LISA_Residuals.png")
-map_LISA2
-dev.off()
-
-
 ########################
 #we will now make a scatter plot, positive slope = positive spatial autocorrelation
-#ERROR
-png("MoranPlot_Residuals.png")
+
 moran.plot(pm.income.poly$residuals, residuals.lw, zero.policy=NULL, spChk=NULL, labels=NULL, xlab="Residuals", 
            ylab="Spatially Lagged Means", quiet=NULL, 
            main = "Moran's I Plot for Income Regression Residuals")
-dev.off()
 
 
 ########################
 
+#Map LISA p values
 map_LISAPvalues.res <- tm_shape(pm.income.poly) + 
   tm_polygons(col = "P", 
               title = "P-values", 
@@ -550,24 +527,19 @@ map_LISAPvalues.res <- tm_shape(pm.income.poly) +
   tm_scale_bar(text.size = 0.5) +
   tm_style("white", title = "P-values of Local Moran's I Analysis\n Income regression residuals")
 
-
 map_LISAPvalues.res
 
-png("TmMap_LISAPvalues_res.png")
-map_LISAPvalues.res
-dev.off()
-
-####################################################################################
-
+###################################################################################
 ####################### Geographically Weighted Regression ########################
-
-#Let's say you are continuing with your data from the regression analysis. 
+###################################################################################
 
 #The first thing you need to do is to add the polygon coordinates to the spatialpolygondataframe.
 #You can obtain the coordinates using the "coordinates" function from the sp library
 pm.income.poly.coords <- sp::coordinates(pm.income.poly)
+
 #Observe the result
 head(pm.income.poly.coords)
+
 #Now add the coordinates back to the spatialpolygondataframe
 pm.income.poly$X <- pm.income.poly.coords[,1]
 pm.income.poly$Y <- pm.income.poly.coords[,2]
@@ -590,9 +562,6 @@ gwr.model
 results<-as.data.frame(gwr.model$SDF)
 head(results)
 
-View(results)
-View(pm.income.poly@data)
-
 #Now for the magic. Let's add our local r-square values to the map
 pm.income.poly$localr <- results$localR2
 pm.income.poly$coeff <- results$pm.income.poly.Income
@@ -600,7 +569,7 @@ pm.income.poly$coeff <- results$pm.income.poly.Income
 pm.income.poly <- pm.income.poly[which(pm.income.poly$localr >= 0),]
 
 plot(income.tracts)
-locator()
+#locator()
 
 dt_region <- st_bbox(c(xmin = -123.2669, xmax = -122.9954,
                        ymin = 49.2002, ymax = 49.30214), crs = st_crs(income.tracts)) %>%
@@ -625,9 +594,6 @@ map_rsquared <- tm_shape(pm.income.poly)+
   tm_legend(legend.outside=TRUE, title = "GVRD", title.size = 1)
 map_rsquared
 
-png("map_rsquared.png")
-map_rsquared
-dev.off()
 
 map_rsquared_2<- tm_shape(pm.income.poly, bbox = larger_region)+
   tm_polygons(col = "localr",
@@ -649,9 +615,7 @@ map_rsquared_3
 
 localr_maps <- tmap_arrange(map_rsquared_2, map_rsquared_3, ncol = 1)
 
-png("localr_maps.png")
 localr_maps
-dev.off()
 
 
 ########### Time for more magic. Let's map the coefficient #################
@@ -665,9 +629,6 @@ map_coeff <- tm_shape(pm.income.poly)+
   tm_legend(legend.outside=TRUE, title = "GVRD", title.size = 1)
 map_coeff
 
-png("map_coeff.png")
-map_coeff
-dev.off()
 
 map_coeff_2<- tm_shape(pm.income.poly, bbox = larger_region)+
   tm_polygons(col = "coeff",
@@ -689,21 +650,18 @@ map_coeff_3
 
 localcoeff_maps <- tmap_arrange(map_coeff_2, map_coeff_3, ncol = 1)
 
-png("localcoeff_maps.png")
 localcoeff_maps
-dev.off()
+
+#########################################################################
+##################### Point Pattern Analysis ############################
 #########################################################################
 
-##################### Point Pattern Analysis ##############################
 spSample.t <- spTransform(spSample, CRS("+init=epsg:3005"))
 income.tracts.t <- spTransform(income.tracts, CRS("+init=epsg:3005"))
 
 spSample.t$x <- coordinates(spSample.t)[,1]
 spSample.t$y <- coordinates(spSample.t)[,2]
 
-#coords.spsample <- coordinates(spSample.t)
-
-View(spSample.t@data)
 #check for and remove duplicated points
 #check for duplicated points
 #finds zero distance among points
@@ -755,8 +713,6 @@ VAR <- ((sum.f.x2)-(sum.fx.2/M))/(M-1)
 MEAN <- N/M
 
 VMR <- VAR/MEAN 
-
-#highly clustered 
 
 ##Finally, perform the test statistic to test for the existence of a random spatial pattern.
 chi.square =  VMR*(M-1)
